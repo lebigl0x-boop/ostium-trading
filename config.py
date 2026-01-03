@@ -13,6 +13,10 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+PRICE_PRECISION_DEFAULT = 10**18
+USD_PRECISION_DEFAULT = 10**30
+
+
 class EnvSettings(BaseModel):
     arbitrum_rpc_url: str
     ostium_subgraph_url: str
@@ -23,8 +27,8 @@ class EnvSettings(BaseModel):
     drawdown_threshold_min: float = 20.0
     drawdown_threshold_max: float = 30.0
     poll_interval_seconds: int = 30
-    price_precision: int = 10**30
-    usd_precision: int = 10**30
+    price_precision: int = PRICE_PRECISION_DEFAULT
+    usd_precision: int = USD_PRECISION_DEFAULT
     usdc_decimals: int = 1_000_000
     telegram_bot_token: str
     telegram_chat_id: str
@@ -54,6 +58,22 @@ class BotConfig(BaseModel):
         extra = "ignore"
 
 
+def _parse_int(value: str | None, default: int) -> int:
+    """
+    Accepte les formats int classiques ou exponentiels (ex: "1e18").
+    En cas d'erreur, retourne le default fourni.
+    """
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return default
+
+
 def load_env_settings(env_path: str | Path = ".env") -> EnvSettings:
     load_dotenv(env_path)
     data = {
@@ -66,8 +86,9 @@ def load_env_settings(env_path: str | Path = ".env") -> EnvSettings:
         "drawdown_threshold_min": float(os.getenv("DRAWDOWN_THRESHOLD_MIN", 20.0)),
         "drawdown_threshold_max": float(os.getenv("DRAWDOWN_THRESHOLD_MAX", 30.0)),
         "poll_interval_seconds": int(os.getenv("POLL_INTERVAL_SECONDS", 30)),
-        "price_precision": int(os.getenv("PRICE_PRECISION", 10**30)),
-        "usd_precision": int(os.getenv("USD_PRECISION", 10**30)),
+        # PRICE_PRECISION est souvent fourni en notation exponentielle ("1e18"); on tolère.
+        "price_precision": _parse_int(os.getenv("PRICE_PRECISION"), PRICE_PRECISION_DEFAULT),
+        "usd_precision": _parse_int(os.getenv("USD_PRECISION"), USD_PRECISION_DEFAULT),
         "usdc_decimals": int(os.getenv("USDC_DECIMALS", 1_000_000)),
         "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""),
         "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""),

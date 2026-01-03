@@ -71,8 +71,12 @@ class TelegramBot:
                 f"Trader: {pos.get('trader')}\n"
                 f"Pair: {pos.get('pair')}\n"
                 f"Side: {'LONG' if pos.get('is_long') else 'SHORT'}\n"
+                f"PnL: {pos.get('pnl_pct', '?')}%\n"
                 f"Drawdown: {pos.get('drawdown')}%\n"
                 f"Size: {pos.get('size_usd')} USD\n"
+                f"Entry: {pos.get('entry_price')}\n"
+                f"Prix actuel: {pos.get('current_price')}\n"
+                f"Lev: {pos.get('leverage')}x\n"
             )
             keyboard = [
                 [
