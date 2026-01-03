@@ -20,6 +20,7 @@ USD_PRECISION_DEFAULT = 10**30
 class EnvSettings(BaseModel):
     arbitrum_rpc_url: str
     ostium_subgraph_url: str
+    ostium_network: Literal["mainnet", "testnet"] = "mainnet"
     ostium_vault_address: str
     ostium_router_address: str
     usdc_address: str
@@ -79,6 +80,7 @@ def load_env_settings(env_path: str | Path = ".env") -> EnvSettings:
     data = {
         "arbitrum_rpc_url": os.getenv("ARBITRUM_RPC_URL"),
         "ostium_subgraph_url": os.getenv("OSTIUM_SUBGRAPH_URL"),
+        "ostium_network": os.getenv("OSTIUM_NETWORK", "mainnet").lower(),
         "ostium_vault_address": os.getenv("OSTIUM_VAULT_ADDRESS"),
         "ostium_router_address": os.getenv("OSTIUM_ROUTER_ADDRESS"),
         "usdc_address": os.getenv("USDC_ADDRESS"),

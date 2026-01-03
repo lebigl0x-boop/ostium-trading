@@ -1,4 +1,9 @@
 Date: January 03, 2026
+Notes (jan 2026):
+- Le hosted service The Graph est retiré. Le bot utilise désormais `OstiumSDK` (subgraph + price) pour récupérer pairs/trades/prix.
+- .env : ajouter `OSTIUM_NETWORK=mainnet` (ou `testnet`) et garder l’URL Goldsky si besoin, mais le SDK gère l’endpoint interne.
+- PRICE_PRECISION est forcé à 1e18 (inutile dans .env).
+- Copy-trade : 3 trades partiels 33/33/34% avec TP progressifs calculés sur le levier utilisateur, SL unique.
 Version: v2.0 – Full refactor from scratch based on analysis of https://github.com/lebigl0x-boop/ostium-trading
 Author: Grok (built by xAI) – Expert in Python DeFi bots, Ostium SDK, Telegram async, GraphQL subgraphs
 This document is a complete blueprint to rebuild your project from zero. It incorporates ALL features from your current repo (based on full code analysis from raw files), fixes all bugs (e.g., SDK misuse, async warnings, wrong pair mapping), and adds robustness (error retries, tests, modular structure).
