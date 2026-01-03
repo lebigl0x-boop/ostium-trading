@@ -1,0 +1,13 @@
+web3>=6.15.0,<7.0.0
+requests>=2.32.0,<3.0.0
+colorama>=0.4.6,<1.0.0
+ostium-python-sdk>=3.0.0
+python-dotenv>=1.0.1,<2.0.0
+python-telegram-bot>=21.4,<22.0
+gql[aiohttp]>=3.5.0,<4.0.0
+tenacity>=8.2.0,<9.0.0
+pydantic>=2.0.0,<3.0.0
+pytest>=8.0.0,<9.0.0
+certifi>=2024.0.0
+
+
