@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Sequence
 
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from web3 import Web3
 
 logger = logging.getLogger(__name__)
+
+
+ERC20_ABI = [
+    {
+        "constant": True,
+        "inputs": [{"name": "_owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "balance", "type": "uint256"}],
+        "type": "function",
+    }
+]
 
 
 def compute_drawdown(
@@ -85,6 +98,7 @@ class TradingClient:
                     network=self.network,
                     private_key=self.private_key,
                     rpc_url=self.rpc_url,
+                    verbose=True,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.error("Impossible d'initialiser l'Ostium SDK: %s", exc)
@@ -208,6 +222,32 @@ class TradingClient:
         except Exception as exc:  # noqa: BLE001
             logger.error("Echec get_price pour %s-%s: %s", base, quote, exc)
             raise
+
+    async def get_usdc_balance(self) -> float:
+        """
+        Lecture du solde USDC du wallet (synchronisé via web3, déporté en thread).
+        """
+        if not self.wallet_address or not self.usdc_address:
+            return 0.0
+        if self.test_mode:
+            logger.info("[TEST_MODE] Solde USDC simulé (0)")
+            return 0.0
+
+        async def _read() -> float:
+            try:
+                w3 = Web3(Web3.HTTPProvider(self.rpc_url))
+                contract = w3.eth.contract(
+                    address=Web3.to_checksum_address(self.usdc_address), abi=ERC20_ABI
+                )
+                balance_wei = contract.functions.balanceOf(
+                    Web3.to_checksum_address(self.wallet_address)
+                ).call()
+                return float(balance_wei) / 1_000_000
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Erreur lecture solde USDC: %s", exc)
+                return 0.0
+
+        return await asyncio.to_thread(_read)
 
     async def open_copy_trade(
         self,

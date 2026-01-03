@@ -163,6 +163,7 @@ async def main() -> None:
         allowed_chat_id=env.telegram_chat_id,
         positions_provider=positions_provider,
         trade_executor=trade_executor,
+        balance_provider=trading_client.get_usdc_balance,
     )
 
     monitor_task = asyncio.create_task(

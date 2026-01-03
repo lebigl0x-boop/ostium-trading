@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 PositionsProvider = Callable[[], Awaitable[Sequence[dict]]]
 TradeExecutor = Callable[[dict], Awaitable[dict]]
+BalanceProvider = Callable[[], Awaitable[float]]
 
 
 class TelegramBot:
@@ -29,16 +30,18 @@ class TelegramBot:
         allowed_chat_id: str,
         positions_provider: PositionsProvider,
         trade_executor: TradeExecutor,
+        balance_provider: BalanceProvider,
     ) -> None:
         self.token = token
         self.allowed_chat_id = str(allowed_chat_id)
         self.positions_provider = positions_provider
         self.trade_executor = trade_executor
+        self.balance_provider = balance_provider
         self.app = Application.builder().token(self.token).build()
 
         self.app.add_handler(CommandHandler("start", self.start_command))
         self.app.add_handler(CommandHandler("positions", self.positions_command))
-        self.app.add_handler(CommandHandler("wallet", self.positions_command))
+        self.app.add_handler(CommandHandler("wallet", self.wallet_command))
         self.app.add_handler(CallbackQueryHandler(self.copy_trade_callback, pattern=r"^copy:"))
 
     async def _ensure_auth(self, update: Update) -> bool:
@@ -89,6 +92,12 @@ class TelegramBot:
                 ]
             ]
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    async def wallet_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._ensure_auth(update):
+            return
+        balance = await self.balance_provider()
+        await update.message.reply_text(f"Solde USDC: {balance:,.2f} USDC")
 
     async def copy_trade_callback(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
