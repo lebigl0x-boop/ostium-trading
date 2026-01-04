@@ -262,35 +262,31 @@ class TradingClient:
         sl_price: float | None,
     ) -> dict:
         """
-        Ouvre un trade unique (full amount) en market. Pas de TP/SL dans perform_trade.
+        Ouvre un trade unique (full amount) en market, sans TP/SL dans perform_trade.
         Les TP/SL pourront être posés ensuite via update_tp/update_sl si besoin.
         """
-        # prix marché
         current_price = await self.get_price(base, quote)
         if current_price <= 0:
             raise ValueError("Prix actuel indisponible pour le copy-trade.")
 
-        leverage_int = int(round(leverage))
-        collateral_units = int(round(amount_in * 1_000_000))
-        trade_params = {
-            "collateral": collateral_units,
-            "asset_type": pair_index,
-            "direction": is_long,
-            "leverage": leverage_int,
-            "order_type": "MARKET",
+        params = {
+            "collateral": int(round(amount_in * 1_000_000)),  # USDC 6 décimales
+            "leverage": int(round(leverage)),
+            "asset_type": int(pair_index),
+            "direction": bool(is_long),
         }
 
         if self.test_mode or not self._client:
             return {
                 "status": "simulated",
                 "current_price": current_price,
-                "trades": [trade_params],
+                "trades": [params],
             }
 
         try:
-            # slippage_bps -> %
-            self._client.ostium.set_slippage_percentage(slippage_bps / 100)  # type: ignore[attr-defined]
-            receipt = await self._client.ostium.perform_trade(trade_params, at_price=float(current_price))  # type: ignore[attr-defined]
+            receipt = await self._client.ostium.perform_trade(  # type: ignore[attr-defined]
+                **params, at_price=float(current_price)
+            )
             return {"status": "submitted", "current_price": current_price, "receipts": [receipt]}
         except Exception as exc:  # noqa: BLE001
             logger.error("Echec copy-trade: %s", exc)

@@ -131,32 +131,22 @@ async def main() -> None:
         return await build_positions_snapshot(cfg, env, pair_map, trading_client)
 
     async def trade_executor(payload: dict) -> dict:
-        pair_index = int(payload["pair_index"])
-        pair = pair_map.get(pair_index, {"base": "UNKNOWN", "quote": "USD", "symbol": f"{pair_index}"})
-        is_long = bool(payload["is_long"])
-        current_price = await trading_client.get_price(pair["base"], pair["quote"])
-        tp_prices, sl_price = compute_tp_sl_prices(
-            entry_price=current_price,
-            leverage=cfg.leverage,
-            tp_pnl_targets=cfg.tp_pnl_targets,
-            sl_pnl=cfg.sl_pnl,
-            is_long=is_long,
-        )
-        if not cfg.copy_tp_sl:
-            tp_prices = []
-            sl_price = None
-        await trading_client.ensure_usdc_approval()
-        return await trading_client.open_copy_trade(
-            pair_index=pair_index,
-            base=pair["base"],
-            quote=pair["quote"],
-            is_long=is_long,
-            amount_in=cfg.amount_in,
-            leverage=cfg.leverage,
-            slippage_bps=cfg.slippage_bps,
-            tp_prices=tp_prices,
-            sl_price=sl_price,
-        )
+            pair_index = int(payload["pair_index"])
+            pair = pair_map.get(pair_index, {"base": "UNKNOWN", "quote": "USD", "symbol": f"{pair_index}"})
+            is_long = bool(payload["is_long"])
+            # Passer uniquement direction + pair + leverage + montant
+            await trading_client.ensure_usdc_approval()
+            return await trading_client.open_copy_trade(
+                pair_index=pair_index,
+                base=pair["base"],
+                quote=pair["quote"],
+                is_long=is_long,
+                amount_in=cfg.amount_in,
+                leverage=cfg.leverage,
+                slippage_bps=cfg.slippage_bps,
+                tp_prices=[],
+                sl_price=None,
+            )
 
     bot = TelegramBot(
         token=env.telegram_bot_token,
