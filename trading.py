@@ -262,52 +262,34 @@ class TradingClient:
         sl_price: float | None,
     ) -> dict:
         """
-        Ouvre trois trades partiels (33/33/34%) avec TP progressifs et SL unique.
+        Ouvre un trade unique (full amount). Les TP/SL seront gérés ensuite si nécessaire.
         """
         # prix marché
         current_price = await self.get_price(base, quote)
         if current_price <= 0:
             raise ValueError("Prix actuel indisponible pour le copy-trade.")
 
-        # fractions 33/33/34
-        fractions = [0.33, 0.33, 0.34]
-        tp_list = list(tp_prices or [])
-        while len(tp_list) < 3:
-            tp_list.append(tp_list[-1] if tp_list else current_price)
-
-        trades_params = []
-        for frac, tp in zip(fractions, tp_list):
-            prec = self._price_precision(base, quote)
-            # SDK attend des entiers: collateral en base units (USDC 6 décimales), TP/SL en 1e10 (selon utils SDK).
-            collateral_units = int(round(amount_in * frac * 1_000_000))
-            tp_scaled = int(round((tp if tp else 0) * 10**10))
-            sl_scaled = int(round((sl_price if sl_price else 0) * 10**10))
-            trades_params.append(
-                {
-                    "collateral": collateral_units,
-                    "asset_type": pair_index,
-                    "direction": is_long,
-                    "leverage": leverage,
-                    "tp": tp_scaled,
-                    "sl": sl_scaled,
-                }
-            )
+        leverage_int = int(round(leverage))
+        collateral_units = int(round(amount_in * 1_000_000))
+        trade_params = {
+            "collateral": collateral_units,
+            "asset_type": pair_index,
+            "direction": is_long,
+            "leverage": leverage_int,
+        }
 
         if self.test_mode or not self._client:
             return {
                 "status": "simulated",
                 "current_price": current_price,
-                "trades": trades_params,
+                "trades": [trade_params],
             }
 
         try:
             # slippage_bps -> %
             self._client.ostium.set_slippage_percentage(slippage_bps / 100)  # type: ignore[attr-defined]
-            receipts: list[dict] = []
-            for tp, params in enumerate(trades_params):
-                result = await self._client.ostium.perform_trade(params, at_price=current_price)  # type: ignore[attr-defined]
-                receipts.append(result)
-            return {"status": "submitted", "current_price": current_price, "receipts": receipts}
+            receipt = await self._client.ostium.perform_trade(trade_params, at_price=current_price)  # type: ignore[attr-defined]
+            return {"status": "submitted", "current_price": current_price, "receipts": [receipt]}
         except Exception as exc:  # noqa: BLE001
             logger.error("Echec copy-trade: %s", exc)
             raise
