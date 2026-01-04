@@ -225,7 +225,7 @@ class TradingClient:
 
     async def get_usdc_balance(self) -> float:
         """
-        Lecture du solde USDC du wallet (synchronisé via web3, déporté en thread).
+        Lecture du solde USDC du wallet via web3 (synchrone, déporté en thread).
         """
         if not self.wallet_address or not self.usdc_address:
             return 0.0
@@ -233,7 +233,7 @@ class TradingClient:
             logger.info("[TEST_MODE] Solde USDC simulé (0)")
             return 0.0
 
-        async def _read() -> float:
+        def _read() -> float:
             try:
                 w3 = Web3(Web3.HTTPProvider(self.rpc_url))
                 contract = w3.eth.contract(
