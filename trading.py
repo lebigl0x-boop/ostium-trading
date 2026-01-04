@@ -304,3 +304,98 @@ class TradingClient:
             logger.error("Echec copy-trade: %s", exc)
             raise
 
+    async def start_pnl_monitor(
+        self,
+        cfg,
+        bot,
+        interval_seconds: int = 30,
+    ) -> None:
+        """
+        Boucle de polling pour fermer partiellement les positions selon tp_pnl_targets
+        (33/33/34%) et full close sur sl_pnl.
+        """
+        if self.test_mode or not self._client:
+            logger.info("PnL monitor inactif en TEST_MODE ou SDK absent.")
+            return
+
+        closed_levels: dict[tuple[int, int], set[int]] = {}
+        sl_closed: set[tuple[int, int]] = set()
+        tp_percents = [33, 33, 34]
+        tp_targets = sorted(cfg.tp_pnl_targets)
+
+        while True:
+            try:
+                trades = await self._client.subgraph.get_open_trades(self.wallet_address)  # type: ignore[attr-defined]
+                for trade in trades:
+                    try:
+                        pair_id = int(trade["pair"]["id"])
+                        index = int(trade["index"])
+                        key = (pair_id, index)
+                        entry_price = int(trade.get("openPrice", 0)) / 10**10
+                        leverage = float(trade.get("leverage", 0))
+                        is_long = bool(trade.get("isBuy", True))
+                        current_price_data = await self._client.price.get_price(  # type: ignore[attr-defined]
+                            trade["pair"]["from"], trade["pair"]["to"]
+                        )
+                        current_price = (
+                            float(current_price_data[0])
+                            if isinstance(current_price_data, (list, tuple))
+                            else float(current_price_data)
+                        )
+                        if entry_price <= 0 or current_price <= 0 or leverage <= 0:
+                            continue
+
+                        price_diff = current_price - entry_price
+                        if not is_long:
+                            price_diff = -price_diff
+                        pnl_pct = (price_diff / entry_price) * leverage * 100
+
+                        # SL full close
+                        if pnl_pct <= cfg.sl_pnl and key not in sl_closed:
+                            try:
+                                await asyncio.to_thread(
+                                    self._client.ostium.close_trade,  # type: ignore[attr-defined]
+                                    pair_id,
+                                    index,
+                                    current_price,
+                                    100,
+                                )
+                                sl_closed.add(key)
+                                await bot.send_text(
+                                    f"SL atteint ({pnl_pct:.2f}%). Fermeture 100% sur pair {trade['pair']['from']}/{trade['pair']['to']}."
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                logger.error("Echec close SL: %s", exc)
+                            continue
+
+                        # TP partial
+                        done_levels = closed_levels.setdefault(key, set())
+                        for i, target in enumerate(tp_targets):
+                            if i in done_levels:
+                                continue
+                            if pnl_pct >= target:
+                                percent = tp_percents[i] if i < len(tp_percents) else 33
+                                try:
+                                    await asyncio.to_thread(
+                                        self._client.ostium.close_trade,  # type: ignore[attr-defined]
+                                        pair_id,
+                                        index,
+                                        current_price,
+                                        percent,
+                                    )
+                                    done_levels.add(i)
+                                    await bot.send_text(
+                                        f"TP{i+1} atteint ({target}% PnL). Fermeture {percent}% sur "
+                                        f"{trade['pair']['from']}/{trade['pair']['to']}."
+                                    )
+                                    break
+                                except Exception as exc:  # noqa: BLE001
+                                    logger.error("Echec close TP%d: %s", i + 1, exc)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error("Erreur trade loop: %s", exc)
+                        continue
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Erreur PnL monitor: %s", exc)
+
+            await asyncio.sleep(interval_seconds)
+

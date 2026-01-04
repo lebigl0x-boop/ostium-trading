@@ -159,10 +159,13 @@ async def main() -> None:
     monitor_task = asyncio.create_task(
         monitor_drawdown(bot, env, cfg, pair_map, trading_client)
     )
+    pnl_task = asyncio.create_task(
+        trading_client.start_pnl_monitor(cfg, bot, interval_seconds=env.poll_interval_seconds)
+    )
     bot_task = asyncio.create_task(bot.run())
 
     try:
-        await asyncio.gather(monitor_task, bot_task)
+        await asyncio.gather(monitor_task, pnl_task, bot_task)
     except asyncio.CancelledError:
         logging.info("Arrêt demandé.")
     finally:
