@@ -278,14 +278,18 @@ class TradingClient:
         trades_params = []
         for frac, tp in zip(fractions, tp_list):
             prec = self._price_precision(base, quote)
+            # SDK attend des entiers: collateral en base units (USDC 6 décimales), TP/SL en 1e10 (selon utils SDK).
+            collateral_units = int(round(amount_in * frac * 1_000_000))
+            tp_scaled = int(round((tp if tp else 0) * 10**10))
+            sl_scaled = int(round((sl_price if sl_price else 0) * 10**10))
             trades_params.append(
                 {
-                    "collateral": round(amount_in * frac, 6),
+                    "collateral": collateral_units,
                     "asset_type": pair_index,
                     "direction": is_long,
                     "leverage": leverage,
-                    "tp": round(tp, prec) if tp else 0,
-                    "sl": round(sl_price, prec) if sl_price else 0,
+                    "tp": tp_scaled,
+                    "sl": sl_scaled,
                 }
             )
 
