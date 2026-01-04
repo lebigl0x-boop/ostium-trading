@@ -264,16 +264,25 @@ class TradingClient:
         """
         Ouvre un trade unique (full amount) en market, sans TP/SL dans perform_trade.
         Les TP/SL pourront être posés ensuite via update_tp/update_sl si besoin.
+        Le SDK attend les montants en USDC "entier" (pas les 6 décimales), il applique son scaling.
         """
-        current_price = await self.get_price(base, quote)
+        # Prix actuel via SDK price.get_price
+        price_data = await self._client.price.get_price(base, quote) if self._client else None  # type: ignore[attr-defined]
+        if price_data is None:
+            raise ValueError("Prix indisponible pour le copy-trade.")
+        if isinstance(price_data, (list, tuple)):
+            current_price = float(price_data[0])
+        else:
+            current_price = float(price_data)
         if current_price <= 0:
             raise ValueError("Prix actuel indisponible pour le copy-trade.")
 
         params = {
-            "collateral": int(round(amount_in * 1_000_000)),  # USDC 6 décimales
+            "collateral": int(round(amount_in)),  # USDC brut, le SDK scale en interne
             "leverage": int(round(leverage)),
             "asset_type": int(pair_index),
             "direction": bool(is_long),
+            "order_type": "MARKET",
         }
 
         if self.test_mode or not self._client:
@@ -284,10 +293,13 @@ class TradingClient:
             }
 
         try:
-            receipt = await self._client.ostium.perform_trade(  # type: ignore[attr-defined]
-                **params, at_price=float(current_price)
-            )
-            return {"status": "submitted", "current_price": current_price, "receipts": [receipt]}
+            receipt = self._client.ostium.perform_trade(params, at_price=current_price)  # type: ignore[attr-defined]
+            return {
+                "status": "submitted",
+                "current_price": current_price,
+                "receipts": [receipt],
+                "params": params,
+            }
         except Exception as exc:  # noqa: BLE001
             logger.error("Echec copy-trade: %s", exc)
             raise
