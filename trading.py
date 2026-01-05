@@ -88,6 +88,7 @@ class TradingClient:
         self.private_key = private_key
         self.test_mode = test_mode
         self.network = network
+        self._has_open_copy: bool = False
 
         self._client = None
         if not self.test_mode:
@@ -304,6 +305,18 @@ class TradingClient:
             logger.error("Echec copy-trade: %s", exc)
             raise
 
+    async def has_open_trades(self, pair_index: int | None = None) -> bool:
+        if self.test_mode or not self._client:
+            return False
+        try:
+            trades = await self._client.subgraph.get_open_trades(self.wallet_address)  # type: ignore[attr-defined]
+            if pair_index is None:
+                return bool(trades)
+            return any(int(t.get("pair", {}).get("id", -1)) == pair_index for t in trades)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Echec has_open_trades: %s", exc)
+            return False
+
     async def start_pnl_monitor(
         self,
         cfg,
@@ -331,9 +344,8 @@ class TradingClient:
                         pair_id = int(trade["pair"]["id"])
                         index = int(trade["index"])
                         key = (pair_id, index)
-                        entry_price = int(trade.get("openPrice", 0)) / 10**10
-                        lev_raw = float(trade.get("leverage", 0))
-                        leverage = lev_raw / 100 if lev_raw > 10 else lev_raw
+                        entry_price = int(trade.get("openPrice", 0)) / 10**18
+                        leverage = float(trade.get("leverage", 0)) / 100.0
                         is_long = bool(trade.get("isBuy", True))
                         current_price_data = await self._client.price.get_price(  # type: ignore[attr-defined]
                             trade["pair"]["from"], trade["pair"]["to"]
@@ -349,7 +361,7 @@ class TradingClient:
                         price_diff = current_price - entry_price
                         if not is_long:
                             price_diff = -price_diff
-                        pnl_pct = (price_diff / entry_price) * leverage * 100
+                        pnl_pct = (price_diff / entry_price) * leverage * 100 if entry_price > 0 else 0
                         logger.info(
                             "PNL trade %s idx %s | pair=%s/%s | entry=%.5f | px=%.5f | lev=%.2f | pnl=%.2f%%",
                             trade.get("tradeID"),
@@ -386,7 +398,11 @@ class TradingClient:
                             if i in done_levels:
                                 continue
                             if pnl_pct >= target:
-                                percent = tp_percents[i] if i < len(tp_percents) else 33
+                                # Pour le dernier TP, on ferme 100% du reste. Sinon 33/33/34.
+                                if i == len(tp_targets) - 1:
+                                    percent = 100
+                                else:
+                                    percent = tp_percents[i] if i < len(tp_percents) else 33
                                 try:
                                     await asyncio.to_thread(
                                         self._client.ostium.close_trade,  # type: ignore[attr-defined]
@@ -403,6 +419,23 @@ class TradingClient:
                                     break
                                 except Exception as exc:  # noqa: BLE001
                                     logger.error("Echec close TP%d: %s", i + 1, exc)
+                        # Si au moins un TP pris et retour sous 0%, on ferme le reste (breakeven+)
+                        if done_levels and pnl_pct <= 0:
+                            try:
+                                await asyncio.to_thread(
+                                    self._client.ostium.close_trade,  # type: ignore[attr-defined]
+                                    pair_id,
+                                    index,
+                                    current_price,
+                                    100,
+                                )
+                                await bot.send_text(
+                                    f"Breakeven atteint ({pnl_pct:.2f}%). Fermeture restante sur "
+                                    f"{trade['pair']['from']}/{trade['pair']['to']}."
+                                )
+                                sl_closed.add(key)
+                            except Exception as exc:  # noqa: BLE001
+                                logger.error("Echec close breakeven: %s", exc)
                     except Exception as exc:  # noqa: BLE001
                         logger.error("Erreur trade loop: %s", exc)
                         continue

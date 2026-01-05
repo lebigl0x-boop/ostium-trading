@@ -54,6 +54,7 @@ class BotConfig(BaseModel):
     slippage_bps: int = 50
     traders: list[str] = Field(default_factory=list)
     copy_tp_sl: bool = True
+    copy_on_drawdown: bool = True
 
     class Config:
         extra = "ignore"

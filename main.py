@@ -95,7 +95,28 @@ async def monitor_drawdown(
             positions = await build_positions_snapshot(cfg, env, pair_map, trading_client)
             for pos in positions:
                 dd = pos["drawdown"]
+                # Si un trade est déjà ouvert localement sur la paire, on ne spamme pas d'alertes drawdown.
+                has_open_on_pair = await trading_client.has_open_trades(pair_index=pos["pair_index"])
+                if has_open_on_pair:
+                    continue
+
                 if cfg.drawdown_min <= dd <= cfg.drawdown_max:
+                    # Auto-copy une seule fois tant qu'aucun trade local ouvert
+                    if cfg.copy_on_drawdown:
+                        await bot.send_text(
+                            f"Signal drawdown {dd}% sur {pos['pair']} -> lancement copie."
+                        )
+                        await trading_client.open_copy_trade(
+                            pair_index=pos["pair_index"],
+                            base=pos["base"],
+                            quote=pos["quote"],
+                            is_long=pos["is_long"],
+                            amount_in=cfg.amount_in,
+                            leverage=cfg.leverage,
+                            slippage_bps=cfg.slippage_bps,
+                            tp_prices=[],
+                            sl_price=None,
+                        )
                     await bot.send_text(
                         f"Drawdown {dd}% sur {pos['pair']} (trader {pos['trader']}, "
                         f"{'LONG' if pos['is_long'] else 'SHORT'}) | "
