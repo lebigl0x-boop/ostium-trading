@@ -332,7 +332,8 @@ class TradingClient:
                         index = int(trade["index"])
                         key = (pair_id, index)
                         entry_price = int(trade.get("openPrice", 0)) / 10**10
-                        leverage = float(trade.get("leverage", 0))
+                        lev_raw = float(trade.get("leverage", 0))
+                        leverage = lev_raw / 100 if lev_raw > 10 else lev_raw
                         is_long = bool(trade.get("isBuy", True))
                         current_price_data = await self._client.price.get_price(  # type: ignore[attr-defined]
                             trade["pair"]["from"], trade["pair"]["to"]
@@ -349,6 +350,17 @@ class TradingClient:
                         if not is_long:
                             price_diff = -price_diff
                         pnl_pct = (price_diff / entry_price) * leverage * 100
+                        logger.info(
+                            "PNL trade %s idx %s | pair=%s/%s | entry=%.5f | px=%.5f | lev=%.2f | pnl=%.2f%%",
+                            trade.get("tradeID"),
+                            index,
+                            trade["pair"]["from"],
+                            trade["pair"]["to"],
+                            entry_price,
+                            current_price,
+                            leverage,
+                            pnl_pct,
+                        )
 
                         # SL full close
                         if pnl_pct <= cfg.sl_pnl and key not in sl_closed:
